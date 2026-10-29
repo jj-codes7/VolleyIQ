@@ -1,0 +1,23 @@
+# Text files are stored with LF line endings in the repository and checked
+# out with the platform's usual endings.
+* text=auto
+
+# Windows launchers need CRLF line endings on every platform.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+
+# Binary files: never convert or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.mp4 binary
+*.mov binary
+*.avi binary
+*.mkv binary
+*.webm binary
+*.safetensors binary
+*.pt binary
+*.pth binary
+*.onnx binary

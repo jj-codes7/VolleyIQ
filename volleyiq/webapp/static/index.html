@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>VolleyIQ · Volleyball ball tracking</title>
+  <meta name="description" content="VolleyIQ detects and tracks the volleyball in your match video, on your own computer.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d1322'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23c5f135' stroke-width='2.5'/%3E%3Cpath d='M16 6c4 3 6 7 6 10M8 21c4-1 9-1 14 2M9 10c5 0 9 2 12 6' fill='none' stroke='%23c5f135' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#" id="home-link" aria-label="VolleyIQ home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10"/><path d="M16 6c4 3 6 7 6 10M8 21c4-1 9-1 14 2M9 10c5 0 9 2 12 6"/></svg>
+        <span>Volley<b>IQ</b></span>
+      </a>
+      <nav class="site-nav" aria-label="Sections">
+        <a href="#analyze">Analyze</a>
+        <a href="#how">How it works</a>
+        <a href="#recent">Recent</a>
+      </nav>
+      <div class="header-actions">
+        <span class="server-status" id="server-status" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span><span id="server-status-text">Connecting…</span>
+        </span>
+        <button type="button" class="btn btn-ghost btn-small" id="stop-button">Stop VolleyIQ</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- ============ Home ============ -->
+    <div id="view-home" class="view">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Volleyball ball tracking · runs on this computer</p>
+          <h1>See where the ball&nbsp;goes.</h1>
+          <p class="hero-lead">Upload a match clip. VolleyIQ runs a pretrained volleyball detector on
+            about <span data-fact="samples">6</span> frames per second, follows the ball with transparent tracking
+            rules, and gives you back an annotated video with a per-frame tracking report.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-large" href="#analyze" id="hero-cta">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              Analyze a match
+            </a>
+            <a class="btn btn-ghost btn-large" href="#how">How it works</a>
+          </div>
+          <dl class="hero-facts">
+            <div><dt>Analysed</dt><dd>~<span data-fact="samples">6</span> frames / second</dd></div>
+            <div><dt>Model</dt><dd>D-FINE-S, pretrained</dd></div>
+            <div><dt>Privacy</dt><dd>Local only, kept <span data-fact="retention">24</span> h</dd></div>
+          </dl>
+        </div>
+        <figure class="hero-art" aria-hidden="true">
+          <svg viewBox="0 0 520 380">
+            <defs>
+              <linearGradient id="court" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#16213a"/><stop offset="1" stop-color="#0d1322"/>
+              </linearGradient>
+              <linearGradient id="arc" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#c5f135" stop-opacity=".15"/><stop offset="1" stop-color="#c5f135"/>
+              </linearGradient>
+            </defs>
+            <path d="M70 330 L170 120 L350 120 L450 330 Z" fill="url(#court)" stroke="#2a3a58" stroke-width="2"/>
+            <path d="M120 225 L400 225" stroke="#2a3a58" stroke-width="2"/>
+            <path d="M103 262 L417 262" stroke="#22304a" stroke-width="1.5" stroke-dasharray="4 6"/>
+            <path d="M96 200 L424 200 L424 168 L96 168 Z" fill="none" stroke="#9aa8c0" stroke-width="1.5" opacity=".7"/>
+            <path d="M96 168 L96 236 M424 168 L424 236" stroke="#9aa8c0" stroke-width="3" opacity=".8"/>
+            <g class="mesh" stroke="#9aa8c0" opacity=".25">
+              <path d="M96 176 H424 M96 184 H424 M96 192 H424"/>
+            </g>
+            <path class="arc" d="M150 300 C 210 40, 330 40, 380 150" fill="none" stroke="url(#arc)" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+            <g class="trail">
+              <circle cx="168" cy="236" r="4"/><circle cx="196" cy="160" r="4"/><circle cx="232" cy="110" r="4"/>
+              <circle cx="274" cy="90" r="4"/><circle cx="314" cy="96" r="4"/><circle cx="350" cy="118" r="4"/>
+            </g>
+            <g class="ball">
+              <circle cx="380" cy="150" r="22" fill="none" stroke="#c5f135" stroke-width="3"/>
+              <circle cx="380" cy="150" r="11" fill="#f5c518"/>
+              <path d="M371 146c5-3 12-3 18 2M372 156c6 2 12 1 16-4" stroke="#1d4ed8" stroke-width="2" fill="none"/>
+            </g>
+            <g class="tag">
+              <rect x="408" y="112" width="78" height="26" rx="6" fill="#0d1322" stroke="#c5f135"/>
+              <text x="447" y="130" text-anchor="middle" fill="#c5f135" font-size="12" font-weight="700" font-family="system-ui, sans-serif">GOOD</text>
+            </g>
+          </svg>
+          <figcaption>Illustration</figcaption>
+        </figure>
+      </section>
+
+      <section class="scope" aria-labelledby="scope-title">
+        <h2 id="scope-title" class="visually-hidden">What this version does</h2>
+        <div class="scope-col">
+          <h3>In this version</h3>
+          <ul class="checks">
+            <li>Detects the volleyball in each analysed frame</li>
+            <li>Tracks one ball over time, with an honest status per frame</li>
+            <li>Annotated video plus a per-frame tracking CSV</li>
+          </ul>
+        </div>
+        <div class="scope-col">
+          <h3>Not yet</h3>
+          <ul class="crosses">
+            <li>Player tracking or identification</li>
+            <li>Rally, serve, attack or score detection</li>
+            <li>Tactical statistics and measured accuracy</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="analyze" class="panel analyze" aria-labelledby="analyze-title">
+        <div class="section-head">
+          <h2 id="analyze-title">Analyze a match</h2>
+          <p class="muted" id="limits-text">MP4, MOV, M4V, AVI, MKV or WEBM.</p>
+        </div>
+
+        <label id="dropzone" class="dropzone" for="file-input" tabindex="0" aria-describedby="limits-text">
+          <input id="file-input" type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" hidden>
+          <span class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+          </span>
+          <span class="drop-title">Drop a video here, or <u>browse</u></span>
+          <span class="drop-hint" id="limits-hint">Checking limits…</span>
+        </label>
+
+        <div id="selected" class="selected" hidden>
+          <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2v8l-4-2"/></svg>
+          <div class="selected-text">
+            <div class="file-name" id="file-name"></div>
+            <div class="muted small" id="file-size"></div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-small" id="clear-file">Remove</button>
+        </div>
+
+        <p id="upload-error" class="alert" role="alert" hidden></p>
+
+        <div class="upload-progress" id="upload-progress" hidden>
+          <div class="bar" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="upload-bar">
+            <div class="fill" id="upload-fill"></div>
+          </div>
+          <span class="muted small" id="upload-text" aria-live="polite">Uploading…</span>
+        </div>
+
+        <div class="analyze-actions">
+          <button type="button" class="btn btn-primary btn-large" id="analyze-button" disabled>Analyze a match</button>
+          <span class="muted small">Processing runs on this computer's GPU when available. The page updates by itself.</span>
+        </div>
+      </section>
+
+      <section id="how" class="how" aria-labelledby="how-title">
+        <h2 id="how-title">How it works</h2>
+        <ol class="how-steps">
+          <li>
+            <span class="step-num">1</span>
+            <h3>Sample frames</h3>
+            <p>About <span data-fact="samples">6</span> frames per second are taken from your video, for example every 5th
+              frame at 30 FPS.</p>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <h3>Detect the ball</h3>
+            <p>A pretrained D-FINE-S volleyball detector looks for the ball in each sampled frame, tile by tile.</p>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <h3>Track it</h3>
+            <p>Simple rules pick at most one ball per frame, ignore static look-alikes and reject impossible jumps.
+              Nothing is guessed in between.</p>
+          </li>
+          <li>
+            <span class="step-num">4</span>
+            <h3>Review</h3>
+            <p>Watch the annotated video, step through every frame's status, and download the video and CSV.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="recent" class="panel recent" aria-labelledby="recent-title">
+        <div class="section-head">
+          <h2 id="recent-title">Recent analyses</h2>
+          <p class="muted small" id="recent-note">Kept for <span data-fact="retention">24</span> hours on this computer.</p>
+        </div>
+        <div id="recent-loading" class="skeleton-list" aria-label="Loading recent analyses">
+          <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+        </div>
+        <div id="recent-empty" class="empty" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3c3 2.5 4.5 5.5 4.5 9M5 16c3-1 7-1 11 1.5M6 7.5c4 0 7 1.5 9.5 4.5"/></svg>
+          <p><strong>No analyses yet.</strong> Upload a clip above and it will appear here.</p>
+        </div>
+        <div id="recent-error" class="empty" hidden>
+          <p><strong>Couldn't load recent analyses.</strong> <span id="recent-error-text"></span></p>
+          <button type="button" class="btn btn-ghost btn-small" id="recent-retry">Try again</button>
+        </div>
+        <ul id="recent-list" class="recent-list" hidden></ul>
+      </section>
+    </div>
+
+    <!-- ============ Processing ============ -->
+    <section id="view-processing" class="view" hidden aria-labelledby="proc-title">
+      <a class="back-link" href="#recent">← All analyses</a>
+      <div class="panel processing">
+        <div class="proc-head">
+          <span class="badge" id="proc-badge">Queued</span>
+          <span class="muted small" id="proc-elapsed"></span>
+        </div>
+        <h1 id="proc-title">Waiting to start</h1>
+        <p class="muted file-line" id="proc-file"></p>
+        <ol class="stepper" id="stepper">
+          <li data-stage="extracting"><span class="step-dot"></span>Extract frames</li>
+          <li data-stage="loading_model"><span class="step-dot"></span>Load AI model</li>
+          <li data-stage="detecting"><span class="step-dot"></span>Detect ball</li>
+          <li data-stage="tracking"><span class="step-dot"></span>Track ball</li>
+          <li data-stage="rendering"><span class="step-dot"></span>Render video</li>
+        </ol>
+        <div class="bar large" role="progressbar" aria-label="Analysis progress" id="proc-bar">
+          <div class="fill" id="proc-fill"></div>
+        </div>
+        <p class="proc-detail" id="proc-detail" aria-live="polite">&nbsp;</p>
+        <p class="muted small">You can close this tab: the analysis keeps running while VolleyIQ is running, and it
+          will be listed under Recent analyses.</p>
+      </div>
+    </section>
+
+    <!-- ============ Results ============ -->
+    <section id="view-results" class="view" hidden aria-labelledby="res-title">
+      <a class="back-link" href="#recent">← All analyses</a>
+      <div class="results-head">
+        <div class="results-title">
+          <span class="badge completed">Completed</span>
+          <h1 id="res-title">Analysis</h1>
+          <p class="muted small" id="res-meta"></p>
+        </div>
+        <div class="results-actions">
+          <a class="btn btn-ghost" id="download-video" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Video
+          </a>
+          <a class="btn btn-ghost" id="download-csv">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Tracking CSV
+          </a>
+          <button type="button" class="btn btn-primary" id="new-from-results">Analyze another</button>
+        </div>
+      </div>
+
+      <div class="results-grid">
+        <div class="results-main">
+          <div class="player">
+            <video id="player" controls playsinline preload="metadata"></video>
+          </div>
+          <p class="alert" id="player-error" role="alert" hidden>This browser couldn't play the video. Use the
+            Video download button and open it in a video player.</p>
+
+          <div class="panel timeline-panel">
+            <div class="timeline-head">
+              <h2>Tracking timeline</h2>
+              <span class="muted small">Each analysed frame, coloured by status. Click or use the arrow keys to jump.</span>
+            </div>
+            <div class="timeline" id="timeline" role="slider" tabindex="0" aria-label="Tracking timeline: choose an analysed frame"
+                 aria-valuemin="1" aria-valuemax="1" aria-valuenow="1">
+              <canvas id="timeline-canvas" aria-hidden="true"></canvas>
+              <div class="playhead" id="playhead" aria-hidden="true"></div>
+            </div>
+            <p class="timeline-loading muted small" id="timeline-loading">Loading per-frame tracking…</p>
+            <div class="readout" id="readout" aria-live="polite" hidden>
+              <span class="readout-status" id="readout-status"></span>
+              <span id="readout-frame"></span>
+              <span id="readout-position" class="muted"></span>
+              <span id="readout-reason" class="readout-reason muted"></span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="results-side" aria-label="Statistics">
+          <div class="kpis" id="kpis"></div>
+
+          <div class="panel">
+            <h2>Tracking status</h2>
+            <div class="status-bar" id="status-bar" aria-hidden="true"></div>
+            <ul class="legend" id="legend"></ul>
+            <p class="muted small">Statuses come from the tracking rules, not from a measured accuracy. A high model score
+              alone never makes a frame good.</p>
+          </div>
+
+          <div class="panel">
+            <h2>Video &amp; processing</h2>
+            <dl class="facts" id="facts"></dl>
+            <div class="timing" id="timing" aria-hidden="true"></div>
+            <ul class="timing-legend" id="timing-legend"></ul>
+          </div>
+        </aside>
+      </div>
+      <p class="muted small model-line" id="model-line"></p>
+    </section>
+
+    <!-- ============ Failed ============ -->
+    <section id="view-failed" class="view" hidden aria-labelledby="fail-title">
+      <a class="back-link" href="#recent">← All analyses</a>
+      <div class="panel failed">
+        <span class="badge failed">Failed</span>
+        <h1 id="fail-title">This video couldn't be analysed</h1>
+        <p class="muted file-line" id="fail-file"></p>
+        <div class="alert" id="fail-message" role="alert"></div>
+        <ul class="tips">
+          <li>Use a common format, such as an MP4 recorded by a phone or camera.</li>
+          <li>Clips can be at most <span id="fail-limit">5 minutes</span> long; trim longer recordings first.</li>
+          <li>If it says VolleyIQ was closed, upload the video again and keep VolleyIQ running until it finishes.</li>
+        </ul>
+        <button type="button" class="btn btn-primary" id="new-from-failed">Try another video</button>
+      </div>
+    </section>
+
+    <!-- ============ Stopped ============ -->
+    <section id="view-stopped" class="view" hidden aria-labelledby="stopped-title">
+      <div class="panel stopped">
+        <h1 id="stopped-title">VolleyIQ has stopped</h1>
+        <p class="muted">The server on this computer is no longer running, so this page can't do anything until it
+          starts again. You can close this tab.</p>
+        <p class="muted">To start it again, double-click <strong>VolleyIQ.vbs</strong> (or <strong>VolleyIQ.bat</strong>)
+          in the VolleyIQ folder.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="stop-dialog" class="dialog" aria-labelledby="stop-title">
+    <form method="dialog">
+      <h2 id="stop-title">Stop VolleyIQ?</h2>
+      <p>This stops the VolleyIQ server on this computer. Your finished analyses stay available until they expire.</p>
+      <p class="alert" id="stop-warning" hidden></p>
+      <div class="dialog-actions">
+        <button type="submit" class="btn btn-ghost" value="cancel" autofocus>Cancel</button>
+        <button type="submit" class="btn btn-danger" value="stop" id="stop-confirm">Stop VolleyIQ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <footer class="site-footer">
+    <p>VolleyIQ runs locally on this computer (127.0.0.1) and is not hosted online. Uploaded videos are deleted
+      when analysis finishes; results are deleted after <span data-fact="retention">24</span> hours.</p>
+    <p>Ball detection uses the <span id="footer-model">grdesignbuild/volleyball-person-ball-detector</span> model
+      (Apache-2.0), a fine-tune of D-FINE-S.</p>
+  </footer>
+</body>
+</html>

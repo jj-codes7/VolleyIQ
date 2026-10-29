@@ -1,0 +1,59 @@
+# Virtual environment
+.venv/
+
+# Raw videos (keep footage out of Git)
+data/videos/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Extracted frames
+data/frames/
+
+# Generated outputs
+outputs/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Downloaded model weights (Hugging Face cache)
+models/
+
+# Web app uploads, jobs and results
+app_data/
+
+# Manual ball annotations (kept out of the repository for now)
+data/annotations/
+
+# Model files anywhere else in the project
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.ckpt
+
+# Secrets and local environment settings
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
