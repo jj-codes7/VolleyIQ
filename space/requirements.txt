@@ -1,0 +1,11 @@
+# Hugging Face Space (Gradio + ZeroGPU). Gradio itself comes from sdk_version in README.md,
+# and the `spaces` package is preinstalled on ZeroGPU hardware.
+# torch 2.13.0 is on ZeroGPU's supported list; the Linux wheel from PyPI includes CUDA.
+torch==2.13.0
+torchvision==0.28.0
+transformers==5.20.2
+huggingface_hub==2.3.0
+safetensors==0.8.0
+opencv-python-headless==4.14.0.94
+numpy==2.2.6
+Pillow==12.3.0

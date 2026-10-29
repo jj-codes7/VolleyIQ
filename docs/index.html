@@ -98,7 +98,65 @@
     footer { border-top: 1px solid var(--line); margin-top: 32px; padding: 28px 0 36px; color: #7d8ba5; font-size: 14px; }
     footer p + p { margin-top: 6px; }
 
+    /* ---------- online analysis ---------- */
+    [hidden] { display: none !important; }
+    .small { font-size: 14px; }
+    .analyzer { padding: 26px; }
+    .server { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); margin-bottom: 18px; }
+    .server .led { width: 9px; height: 9px; border-radius: 50%; background: var(--lost); }
+    .server.online .led { background: var(--lime); box-shadow: 0 0 0 4px var(--lime-soft); }
+    .server.offline .led { background: var(--bad); }
+    .dropzone { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 44px 20px; border: 2px dashed var(--line-2); border-radius: var(--radius); background: var(--bg-2); cursor: pointer; transition: border-color .2s, background-color .2s; }
+    .dropzone:hover, .dropzone:focus-visible, .dropzone.dragging { border-color: var(--lime); background-color: var(--panel); }
+    .dropzone.disabled { cursor: not-allowed; opacity: .55; }
+    .dropzone .icon { width: 56px; height: 56px; border-radius: 50%; }
+    .dropzone .icon svg { width: 28px; height: 28px; }
+    .drop-title { font-size: 18px; font-weight: 700; }
+    .drop-title u { color: var(--lime); text-underline-offset: 3px; }
+    .selected { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel-2); }
+    .selected div { flex: 1; min-width: 0; }
+    .file-name { font-weight: 600; overflow-wrap: anywhere; }
+    .row { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
+    button.btn { border: 0; font: inherit; font-weight: 700; cursor: pointer; }
+    button.btn-ghost { border: 1px solid var(--line-2); }
+    .btn-small { padding: 8px 14px; font-size: 14px; }
+    .btn:disabled { background: var(--panel-2); color: #6b7a96; box-shadow: none; cursor: not-allowed; transform: none; }
+    .alert { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(248, 113, 113, .45); background: rgba(239, 68, 68, .09); color: #fecaca; overflow-wrap: anywhere; }
+    .notice { padding: 14px 16px; margin-bottom: 18px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--muted); }
+    .progress-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .meter { height: 10px; border-radius: 99px; background: var(--panel-2); overflow: hidden; margin: 18px 0 10px; }
+    .meter .fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #7fbf1e, var(--lime)); transition: width .4s; }
+    .meter .fill.indeterminate { width: 32%; animation: slide 1.5s ease-in-out infinite; }
+    @keyframes slide { from { margin-left: -32%; } to { margin-left: 100%; } }
+    .privacy { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+    .results-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+    .results-head h3 { font-size: 22px; overflow-wrap: anywhere; }
+    .downloads { display: flex; flex-wrap: wrap; gap: 10px; }
+    .result-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+    .result-main, .result-side { display: grid; gap: 18px; min-width: 0; }
+    .player { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #000; }
+    .player video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+    .panel { padding: 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg-2); }
+    .timeline-box { position: relative; height: 44px; border-radius: 10px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); cursor: pointer; touch-action: none; }
+    .timeline-box canvas { width: 100%; height: 100%; display: block; }
+    .playhead { position: absolute; top: -2px; bottom: -2px; width: 2px; left: 0; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); pointer-events: none; }
+    .readout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 12px; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .chip { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #0b1020; }
+    .reason { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+    .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kpi { padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); }
+    .kpi.wide { grid-column: 1 / -1; border-color: rgba(197, 241, 53, .35); background: linear-gradient(135deg, rgba(197, 241, 53, .12), var(--bg-2) 60%); }
+    .kpi-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+    .kpi-value { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .kpi.wide .kpi-value { font-size: 36px; color: var(--lime); }
+    .kpi-sub { color: var(--muted); font-size: 13px; }
+    .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+    .facts dt { color: var(--muted); }
+    .facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    .good { background: var(--good); } .uncertain { background: var(--uncertain); } .lost { background: var(--lost); } .bad { background: var(--bad); }
+
     @media (max-width: 900px) {
+      .result-grid { grid-template-columns: 1fr; }
       .hero { grid-template-columns: 1fr; padding-top: 44px; }
       .art { max-width: 480px; }
       .grid-4 { grid-template-columns: 1fr 1fr; }
@@ -115,6 +173,10 @@
       *, *::before, *::after { animation: none !important; transition: none !important; }
     }
   </style>
+  <!-- Official Gradio browser client, pinned and integrity-checked; app.js imports it from the same URL. -->
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@gradio/client@2.7.2/dist/browser.js"
+        integrity="sha384-RmaKlUsFy/S2XEN0bp3j86u2IvlLj+TYI6ApqF3Y1ZotX/8ioKop+1rPw4YJshGR" crossorigin="anonymous">
+  <script type="module" src="app.js"></script>
 </head>
 <body>
   <header>
@@ -124,9 +186,10 @@
         <span>Volley<b>IQ</b></span>
       </a>
       <nav aria-label="Sections">
+        <a href="#analyze">Analyze</a>
         <a href="#how">How it works</a>
         <a href="#results">Results</a>
-        <a href="#start">Get started</a>
+        <a href="#start">Run locally</a>
         <a href="https://github.com/jj-codes7/VolleyIQ">GitHub</a>
       </nav>
     </div>
@@ -135,13 +198,13 @@
   <main id="top">
     <div class="wrap hero">
       <div>
-        <p class="eyebrow">Volleyball ball tracking · runs on your computer</p>
+        <p class="eyebrow">Volleyball ball tracking · nothing to install</p>
         <h1>See where the ball goes.</h1>
-        <p class="lead">VolleyIQ is a local app for volleyball video. Upload a match clip and it runs a pretrained
-          volleyball detector on about six frames per second, follows the ball with transparent tracking rules, and
-          gives you back an annotated video with an honest per-frame tracking report.</p>
+        <p class="lead">Upload a volleyball clip. VolleyIQ runs a pretrained volleyball detector on about six frames per
+          second, follows the ball with transparent tracking rules, and gives you back an annotated video with an honest
+          per-frame tracking report.</p>
         <div class="actions">
-          <a class="btn btn-primary" href="#start">Get started</a>
+          <a class="btn btn-primary" href="#analyze">Analyze a video</a>
           <a class="btn btn-ghost" href="#how">How it works</a>
         </div>
       </div>
@@ -171,6 +234,103 @@
       </figure>
     </div>
 
+    <section id="analyze" aria-labelledby="analyze-title">
+      <div class="wrap">
+        <h2 id="analyze-title" class="section-title">Analyze a video</h2>
+        <p class="section-lead">Your video is analysed by the real VolleyIQ pipeline on a GPU server: no Python, no
+          installation. A 30-second clip usually takes a few minutes, longer if others are in the queue.</p>
+        <div class="card analyzer">
+          <div class="server" id="server" role="status" aria-live="polite">
+            <span class="led" aria-hidden="true"></span><span id="server-text">Checking the analysis server…</span>
+          </div>
+          <p class="notice" id="unavailable" hidden>The online analysis service isn't live yet. Until it is, you can run
+            VolleyIQ on your own computer: see <a href="#start">Run it on your computer</a> below.</p>
+
+          <div id="step-upload">
+            <label id="dropzone" class="dropzone" for="file-input" tabindex="0" aria-describedby="limits">
+              <input id="file-input" type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" hidden>
+              <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>
+              <span class="drop-title">Drop a video here, or <u>browse</u></span>
+              <span class="muted small" id="limits">MP4, MOV, M4V, AVI, MKV or WEBM</span>
+            </label>
+            <div class="selected" id="selected" hidden>
+              <div><div class="file-name" id="file-name"></div><div class="muted small" id="file-size"></div></div>
+              <button type="button" class="btn btn-ghost btn-small" id="clear-file">Remove</button>
+            </div>
+            <p class="alert" id="upload-error" role="alert" hidden></p>
+            <div class="row">
+              <button type="button" class="btn btn-primary" id="analyze-button" disabled>Analyze Video</button>
+              <span class="muted small">By uploading, you confirm you have the right to use the video. See privacy below.</span>
+            </div>
+          </div>
+
+          <div id="step-progress" hidden>
+            <p class="progress-title" id="progress-title">Uploading your video…</p>
+            <div class="meter" role="progressbar" aria-label="Analysis progress" id="progress-bar">
+              <div class="fill indeterminate" id="progress-fill"></div>
+            </div>
+            <p class="small" id="progress-detail" aria-live="polite">&nbsp;</p>
+            <p class="muted small">Keep this tab open until the analysis finishes. The first analysis after a quiet period
+              can take an extra minute while the server wakes up.</p>
+          </div>
+
+          <div id="step-error" hidden>
+            <p class="progress-title">The analysis didn't finish</p>
+            <p class="alert" id="error-text" role="alert"></p>
+            <div class="row"><button type="button" class="btn btn-ghost" id="retry-button">Try another video</button></div>
+          </div>
+
+          <div id="step-results" hidden>
+            <div class="results-head">
+              <div><p class="label">Analysis complete</p><h3 id="result-title"></h3></div>
+              <div class="downloads">
+                <button type="button" class="btn btn-ghost btn-small" id="download-video">Download video</button>
+                <button type="button" class="btn btn-ghost btn-small" id="download-csv">Download tracking CSV</button>
+                <button type="button" class="btn btn-primary btn-small" id="new-button">Analyze another</button>
+              </div>
+            </div>
+            <div class="result-grid">
+              <div class="result-main">
+                <div class="player"><video id="player" controls playsinline preload="metadata"></video></div>
+                <p class="alert" id="player-error" role="alert" hidden>Your browser couldn't play this video. Use
+                  "Download video" and open it in a video player.</p>
+                <div class="panel">
+                  <p class="label">Tracking timeline: each analysed frame, coloured by status</p>
+                  <div class="timeline-box" id="timeline" role="slider" tabindex="0" aria-label="Tracking timeline: choose an analysed frame"
+                       aria-valuemin="1" aria-valuemax="1" aria-valuenow="1">
+                    <canvas id="timeline-canvas" aria-hidden="true"></canvas>
+                    <div class="playhead" id="playhead" aria-hidden="true"></div>
+                  </div>
+                  <div class="readout" aria-live="polite">
+                    <span class="chip" id="readout-status"></span>
+                    <span id="readout-frame"></span>
+                    <span class="muted" id="readout-position"></span>
+                    <span class="reason" id="readout-reason"></span>
+                  </div>
+                  <p class="muted small">Click the timeline, or focus it and use the arrow keys, to jump to a frame.</p>
+                </div>
+              </div>
+              <div class="result-side">
+                <div class="kpis" id="kpis"></div>
+                <div class="panel"><p class="label">Video &amp; processing</p><dl class="facts" id="facts"></dl></div>
+              </div>
+            </div>
+            <p class="note">Statuses come from the tracking rules, not from a measured accuracy. Positions are automatic and
+              can be wrong.</p>
+          </div>
+
+          <div class="privacy" id="privacy">
+            <strong>Privacy.</strong> Your video is uploaded over HTTPS to the VolleyIQ analysis server, a
+            <a href="https://huggingface.co/spaces">Hugging Face Space</a>, where it is processed. It is never shown to other
+            visitors. VolleyIQ doesn't keep it: working files are deleted when the analysis finishes, and the uploaded video
+            and results within about an hour. Hugging Face runs the server under its own
+            <a href="https://huggingface.co/privacy">privacy policy</a>. Free GPU time is limited per visitor per day, so
+            very frequent use may be refused until the next day.
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section aria-labelledby="scope-title">
       <div class="wrap">
         <h2 id="scope-title" class="section-title">What it does today</h2>
@@ -182,7 +342,7 @@
               <li>Detects the volleyball in each analysed frame</li>
               <li>Tracks one ball over time, with a status for every frame</li>
               <li>Annotated video, an interactive results dashboard, and a per-frame CSV</li>
-              <li>Runs entirely on your own computer; videos never leave it</li>
+              <li>Works online here, or entirely offline with the local app</li>
             </ul>
           </div>
           <div class="card">
@@ -246,7 +406,7 @@
     <section aria-labelledby="private-title">
       <div class="wrap">
         <div class="grid grid-3">
-          <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h3 id="private-title">Private by design</h3><p>The app listens only on your own computer. Uploaded videos are deleted after analysis and results after 24&nbsp;hours.</p></div>
+          <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h3 id="private-title">Private by design</h3><p>Online, videos are never shown to other visitors and are deleted within about an hour. With the local app, they never leave your computer.</p></div>
           <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M4 17l5-5 4 4 7-8"/><path d="M14 8h6v6"/></svg></div><h3>Interactive dashboard</h3><p>A clickable, keyboard-friendly timeline jumps the video to any analysed frame and shows why it got its status.</p></div>
           <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div><h3>One-click start</h3><p>On Windows, double-click <code>VolleyIQ.vbs</code>; the app opens in your browser without a console window.</p></div>
         </div>
@@ -255,9 +415,9 @@
 
     <section id="start" aria-labelledby="start-title">
       <div class="wrap">
-        <h2 id="start-title" class="section-title">Get started</h2>
-        <p class="section-lead">VolleyIQ is a local Python app, not an online service: this page only describes it. You run it on
-          your own Windows computer, ideally with an NVIDIA GPU.</p>
+        <h2 id="start-title" class="section-title">Run it on your computer</h2>
+        <p class="section-lead">Optional: for longer videos, or to keep footage completely offline, run the local app on
+          your own Windows computer, ideally with an NVIDIA GPU. It accepts clips up to 5 minutes and has no daily GPU quota.</p>
         <div class="card">
           <ol class="steps">
             <li><h3>Get the code</h3><p class="muted">Clone the repository from GitHub.</p>
@@ -278,7 +438,8 @@ cd VolleyIQ</pre></li>
     <div class="wrap">
       <p>VolleyIQ · <a href="https://github.com/jj-codes7/VolleyIQ">github.com/jj-codes7/VolleyIQ</a></p>
       <p>Ball detection uses the grdesignbuild/volleyball-person-ball-detector model (Apache-2.0), a fine-tune of D-FINE-S.</p>
-      <p>This is a static page with no cookies or tracking. The court drawing is an illustration, not real output.</p>
+      <p>This website sets no cookies and uses no analytics. Videos you analyse are sent only to the VolleyIQ analysis
+        server on Hugging Face (see Privacy above). The court drawing is an illustration, not real output.</p>
     </div>
   </footer>
 </body>

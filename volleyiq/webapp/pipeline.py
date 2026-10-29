@@ -48,8 +48,19 @@ class VideoError(ValueError):
     """A problem with the user's video, worded so it can be shown to them."""
 
 
-def probe_video(path):
-    """Check that OpenCV can decode `path`. Returns its width, height, fps, frame count and duration."""
+def _length_text(seconds):
+    if seconds >= 120:
+        minutes = round(seconds / 60, 1)
+        return f"{minutes:g} minutes"
+    return f"{round(seconds)} seconds"
+
+
+def probe_video(path, max_duration_s=None):
+    """Check that OpenCV can decode `path`. Returns its width, height, fps, frame count and duration.
+
+    `max_duration_s` defaults to MAX_DURATION_S; the hosted demo passes a shorter limit.
+    """
+    limit = MAX_DURATION_S if max_duration_s is None else max_duration_s
     capture = cv2.VideoCapture(str(path))
     try:
         if not capture.isOpened():
@@ -70,8 +81,8 @@ def probe_video(path):
     if frame_count <= 0:
         raise VideoError("The video's length could not be read, so it can't be analysed.")
     duration = frame_count / fps
-    if duration > MAX_DURATION_S:
-        raise VideoError(f"The video is {duration / 60:.1f} minutes long. The limit is {MAX_DURATION_S // 60} minutes; "
+    if duration > limit:
+        raise VideoError(f"The video is {_length_text(duration)} long. The limit is {_length_text(limit)}; "
                          "trim it to a shorter clip first.")
     return {"width": width, "height": height, "fps": round(fps, 3), "frame_count": frame_count,
             "duration_s": round(duration, 2)}
@@ -135,11 +146,20 @@ def render_video(rows, frames_dir, output_base, fps):
     raise RuntimeError("OpenCV could not write a browser-playable video (tried H.264 MP4 and VP8 WebM).")
 
 
-def process_video(input_path, work_dir, get_detector, on_stage=lambda stage: None):
+def detect_frames(frames_dir, detections_dir, detector):
+    """The detection step: the pretrained model on every extracted frame (volleyiq.detect_ball)."""
+    run_detection(frames_dir, detections_dir, tile=DEFAULT_TILE, threshold=DEFAULT_THRESHOLD, detector=detector)
+
+
+def process_video(input_path, work_dir, get_detector, on_stage=lambda stage: None, detect=detect_frames,
+                  max_duration_s=None):
     """Run the whole analysis for one video. Returns (output video path, statistics dict).
 
     `get_detector()` returns the loaded model (or a stand-in in tests); it is
     called only when detection starts. `on_stage(name)` reports progress.
+    `detect(frames_dir, detections_dir, detector)` runs the detection step; the
+    hosted demo passes a version that runs on a borrowed GPU. `max_duration_s`
+    overrides the video length limit (see probe_video).
     """
     work_dir = Path(work_dir)
     timings, started = {}, time.perf_counter()
@@ -152,7 +172,7 @@ def process_video(input_path, work_dir, get_detector, on_stage=lambda stage: Non
         on_stage(name)
     stage.current, stage.last = None, started
 
-    info = probe_video(input_path)
+    info = probe_video(input_path, max_duration_s)
     every = sample_interval(info["fps"])
     frames_dir, detections_dir = work_dir / "frames", work_dir / "detections"
 
@@ -163,7 +183,7 @@ def process_video(input_path, work_dir, get_detector, on_stage=lambda stage: Non
     detector = get_detector()
 
     stage("detecting")
-    run_detection(frames_dir, detections_dir, tile=DEFAULT_TILE, threshold=DEFAULT_THRESHOLD, detector=detector)
+    detect(frames_dir, detections_dir, detector)
 
     stage("tracking")
     frames = load_detections(detections_dir)

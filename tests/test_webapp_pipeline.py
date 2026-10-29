@@ -98,6 +98,12 @@ class ProbeVideoTests(unittest.TestCase):
             with self.assertRaisesRegex(VideoError, "limit is"):
                 probe_video(path)
 
+    def test_custom_duration_limit(self):
+        path = make_video(self.tmp / "clip.mp4", duration=2, width=160, height=120, fps=10)
+        self.assertEqual(probe_video(path, max_duration_s=5)["duration_s"], 2.0)
+        with self.assertRaisesRegex(VideoError, "The video is 2 seconds long. The limit is 1 seconds"):
+            probe_video(path, max_duration_s=1)
+
 
 class ProcessVideoTests(unittest.TestCase):
     def setUp(self):
@@ -143,6 +149,23 @@ class ProcessVideoTests(unittest.TestCase):
 
         with open(work / "track.csv", newline="", encoding="utf-8") as handle:
             self.assertEqual(len(list(csv.DictReader(handle))), 12)
+
+    def test_detection_step_can_be_replaced(self):
+        # The hosted demo runs detection on a borrowed GPU through this hook.
+        video = make_video(self.tmp / "clip.mp4", duration=1, width=320, height=180, fps=30)
+        work = self.tmp / "job"
+        work.mkdir()
+        calls = []
+
+        def detect(frames_dir, detections_dir, detector):
+            calls.append((Path(frames_dir).name, Path(detections_dir).name, type(detector).__name__))
+            from volleyiq.webapp.pipeline import detect_frames
+            detect_frames(frames_dir, detections_dir, detector)
+
+        with redirect_stdout(StringIO()):
+            _, stats = process_video(video, work, FakeDetector, detect=detect)
+        self.assertEqual(calls, [("frames", "detections", "FakeDetector")])
+        self.assertEqual(stats["frames_analysed"], 6)
 
     def test_unreadable_video_fails_before_loading_the_model(self):
         fake = self.tmp / "fake.mp4"

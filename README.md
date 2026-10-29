@@ -11,7 +11,8 @@ never change the manual annotation CSV.
 
 **The easiest way in is the web app:** double-click `VolleyIQ.vbs`, upload a
 video, and get it back with the ball detected and tracked. See
-[Web app](#web-app).
+[Web app](#web-app). There is also an [online version](#online-version)
+that needs only a browser.
 
 ## Project layout
 
@@ -38,6 +39,8 @@ VolleyIQ/
 │   ├── track_ball.py       picks one ball per frame from those detections
 │   ├── evaluate_tracking.py  compares tracking strategies with the hand labels
 │   └── webapp/             the local web app (server, jobs, pipeline, web page)
+├── docs/                   the public website (GitHub Pages)
+├── space/                  the online analysis server (Hugging Face Space)
 ├── tests/                  automated checks (no clicking needed)
 ├── requirements.txt        exact package versions used
 ├── VolleyIQ.vbs            double-click to start the web app (no console window)
@@ -277,6 +280,97 @@ command-line baseline in every frame (295 good, 11 uncertain, 81 lost,
 | The video doesn't play in the browser | Use *Download video* and open it in a video player, or try Edge or Chrome. |
 | A job says "Interrupted" | The app was closed while it was running. Upload the video again. |
 | Processing is very slow | Check the result's "on CUDA/CPU" line. CPU means PyTorch can't see the GPU. |
+
+## Online version
+
+Visitors can analyse a video with only a browser, at
+<https://jj-codes7.github.io/VolleyIQ/#analyze>, once the analysis server
+below is deployed. Until then, the website says the online analysis isn't
+live yet.
+
+```
+GitHub Pages (docs/)                          Hugging Face Space (space/)
+website: upload, progress, results  ──────▶   Gradio app on ZeroGPU
+official Gradio JavaScript client             the same volleyiq pipeline as the local app:
+(@gradio/client 2.7.2, integrity-checked)     extract → detect (GPU) → track → render
+```
+
+GitHub Pages only serves static files, so the analysis runs on a Hugging
+Face Space. `space/app.py` wraps the existing `volleyiq.webapp.pipeline`
+unchanged: the same pinned model, detector settings (tile 864, threshold
+0.4) and baseline tracker. Only the detection step borrows a GPU through
+ZeroGPU; frame extraction, tracking and rendering run on the Space's CPU.
+The website (`docs/app.js`) uploads the video with the official Gradio client,
+shows the real queue position and the server's stage, and draws the results:
+the annotated video, a tracking timeline, statistics, and video and CSV
+downloads. The local app and its launchers are unchanged.
+
+**Limits** (set in `space/app.py`, shown by the website from `docs/config.js`;
+a test checks they match):
+
+- Clips up to 60 seconds and 100 MB; MP4, MOV, M4V, AVI, MKV or WEBM. The
+  server checks the file really is a readable video.
+- One analysis at a time; up to 8 more wait in a queue.
+- At most 120 seconds of GPU time per clip. ZeroGPU counts GPU time against
+  each visitor's free daily quota (about 2 minutes a day without a Hugging
+  Face login), not against the Space owner.
+- The Space sleeps when unused; the first visit afterwards waits for it to
+  start.
+
+**Privacy.** Videos go only to the Space. Each analysis has its own temporary
+folder; frames and detection files are deleted as soon as it ends, and the
+uploaded video and results within about an hour. Visitors can't see each
+other's jobs, and the Space has no shutdown or file-browsing routes.
+
+**Deploying the Space (one-time, on huggingface.co).**
+
+1. You need a free Hugging Face account with a verified email that is at
+   least 30 days old. Hugging Face only lets such accounts host ZeroGPU
+   Spaces for free.
+2. Create a new Space: SDK **Gradio**, hardware **ZeroGPU**, visibility
+   **Public**, name `VolleyIQ`.
+3. Build its files and upload them:
+   ```powershell
+   .\.venv\Scripts\python.exe space\build_space.py
+   ```
+   This writes `dist\space\` (git-ignored): `app.py`, `README.md` (the Space
+   settings), `requirements.txt` and the `volleyiq` package. Upload the
+   contents of that folder with *Files → Add file → Upload files*. No model
+   weights are uploaded: the Space downloads the pinned model when it starts.
+   No token or secret is needed.
+4. Wait for the Space to show *Running*, then try it on its own page.
+5. In `docs/config.js`, set `BACKEND` to the Space id, for example
+   `"your-hf-username/VolleyIQ"`, then commit and push. GitHub Pages
+   republishes the website within a few minutes.
+
+**Test it on this computer before deploying.** The Space app needs Gradio,
+which the local app's `.venv` doesn't have, so use a separate environment
+(this doesn't change `.venv`):
+
+```powershell
+py -3.10 -m venv $env:TEMP\volleyiq-space
+& $env:TEMP\volleyiq-space\Scripts\python.exe -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r space\requirements.txt gradio==6.31.0 spaces==0.51.3
+$env:HF_HUB_OFFLINE = "1"; $env:VOLLEYIQ_DEVICE = "cpu"
+& $env:TEMP\volleyiq-space\Scripts\python.exe space\app.py
+```
+
+Then serve the website and point it at the local server (the `?backend=`
+override only works on a page served from this computer):
+
+```powershell
+.\.venv\Scripts\python.exe -m http.server 8090 --bind 127.0.0.1 --directory docs
+# open http://127.0.0.1:8090/?backend=http://127.0.0.1:7860/
+```
+
+On a CPU, a 10-second 1080p clip took about 2.5 minutes here; on the Space
+the detection step runs on a GPU.
+
+**Limitations.** The online version uses a free shared service: it can be
+asleep, busy, or out of a visitor's daily GPU quota, and those visitors are
+told so. Clips are limited to 60 seconds; use the local app for longer ones.
+Everything else in [Track the ball across frames](#track-the-ball-across-frames)
+applies: it tracks the ball only, and the statuses are rules, not a measured
+accuracy.
 
 ## Extract frames from a video
 
@@ -714,8 +808,13 @@ job status changes, failed and interrupted jobs, video download with
 seeking, blocked paths and foreign websites, the timeline data, stopping
 the app, and the full pipeline on a synthetic video), the web page (every
 element the script needs exists, nothing external or inline is loaded,
-keyboard and reduced-motion basics) and the no-console launcher (detecting
-a running or older VolleyIQ, startup failures shown with the log). The detection and tracking checks
+keyboard and reduced-motion basics), the no-console launcher (detecting
+a running or older VolleyIQ, startup failures shown with the log), the public
+website in `docs/` (limits match the server, pinned and integrity-checked
+client, no secrets, privacy notice) and the Space build. The Space app's own
+checks (`tests/test_space_app.py`) need Gradio and are skipped in `.venv`;
+run them in the separate environment described under
+[Online version](#online-version). The detection and tracking checks
 use made-up detections instead of the model, so they don't download any
 weights or need a network. They don't
 open any windows or need anyone to click, and they write only to a

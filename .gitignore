@@ -57,3 +57,6 @@ htmlcov/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Built Hugging Face Space folder (python space/build_space.py)
+dist/
