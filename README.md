@@ -96,7 +96,8 @@ interrupted.
 
 Prefer to see the output? **Double-click `VolleyIQ.bat`** instead. It does
 the same with a console window; close the window (or press Ctrl+C in it)
-to stop. Use this if `VolleyIQ.vbs` reports a problem.
+to stop. Use this if `VolleyIQ.vbs` reports a problem. If VolleyIQ is
+already running, it just opens the page.
 
 You can make a desktop shortcut to either file (right-click, *Send to*,
 *Desktop (create shortcut)*); the launchers find the project from their own
@@ -129,14 +130,18 @@ which app to open it with, because no default app was ever chosen for
 ### Use it
 
 1. Click **Analyze a match**, then drag a video onto the upload area (or
-   click *browse*, or press Enter on it), and click **Analyze a match**
-   again. Accepted: MP4, MOV, M4V, AVI, MKV and WEBM, up to 500 MB and
-   5 minutes. The server checks the file really is a readable video before
-   accepting it.
+   click *browse*, or press Enter on it). The page previews the video and
+   shows its size, duration and resolution (the preview stays in the
+   browser), with **Replace** and **Remove** buttons. Click **Analyze a
+   match** again to upload it; **Cancel upload** stops the upload, and the
+   partly received file is discarded. Accepted: MP4, MOV, M4V, AVI, MKV and
+   WEBM, up to 500 MB and 5 minutes. The server checks the file really is a
+   readable video before accepting it.
 2. The page shows the job's state: **Queued**, then **Processing** with a
    step tracker (extract frames, load AI model, detect ball with a frame
    counter, track ball, render video) and the time so far. You can close
-   the tab; the job keeps running.
+   the tab; the job keeps running. **Cancel analysis** stops it (within a
+   frame) and deletes everything it had written.
 3. When it's **Completed** you get a results dashboard:
    - the analysed video, with normal playback controls;
    - a **tracking timeline**: one coloured mark per analysed frame (green
@@ -148,13 +153,17 @@ which app to open it with, because no default app was ever chosen for
      counts per status, video length, size and frame rate, sampling, raw
      detector boxes, static look-alikes ignored, processing time per step,
      and GPU or CPU;
-   - downloads for the video and the tracking CSV.
+   - downloads for the video and the tracking CSV, and a **Delete** button.
 4. If it **Failed**, the page says why (for example "could not be opened as
    a video" or "too long") and lets you try another file.
 
-**Recent analyses** on the start page lists each job with its status and,
+**Analysis history** on the start page lists each job with its status and,
 when finished, the share of frames with a ball. Each has its own link
-(`#job/<id>`) you can reopen until it expires.
+(`#job/<id>`) you can reopen until it expires, and a delete button;
+**Clear history** deletes them all. Every deletion asks for confirmation
+first. Above it, the dashboard shows totals computed from those analyses
+(completed analyses, frames analysed, average share of frames with a ball)
+and the GPU the AI runs on.
 
 The page states what this version does and doesn't do: it detects and
 tracks the ball, but does not yet track players, detect rallies or
@@ -193,7 +202,9 @@ browser ──upload──▶ server (127.0.0.1) ──▶ job queue ──▶ o
 | `GET /api/jobs/<id>/video` | The analysed video (only when completed; supports seeking) |
 | `GET /api/jobs/<id>/track.csv` | Per-frame tracking result (only when completed) |
 | `GET /api/jobs/<id>/tracking` | The same per-frame result as JSON, for the timeline |
-| `GET /api/jobs`, `GET /api/config` | Recent jobs; upload limits and pipeline settings |
+| `GET /api/jobs`, `GET /api/config` | Recent jobs; upload limits, pipeline settings and the GPU in use |
+| `DELETE /api/jobs/<id>` | Delete a job and all its files; a processing job is cancelled, then deleted |
+| `DELETE /api/jobs` | Delete every job (clear the history) |
 | `GET /api/health` | `{"app": "VolleyIQ"}`, so the launcher can tell VolleyIQ is running |
 | `POST /api/shutdown` | Stop VolleyIQ (needs the header `X-VolleyIQ-Action: shutdown`) |
 
@@ -216,8 +227,17 @@ not `data\`, `outputs\`, the annotation CSVs or the model cache.
 - The analysed video, `track.csv` and `job.json` are kept for **24 hours**,
   then deleted automatically (checked when the app starts and after every
   job). At most the 20 newest finished jobs are kept.
-- To remove everything at once, stop the app and delete the `app_data`
-  folder.
+- **You can delete any analysis sooner** from the page (its delete button,
+  or **Clear history**). That removes its whole folder: the analysed video,
+  `track.csv` and `job.json`, and for a queued or running job the uploaded
+  video and temporary frames too. A running job is stopped first.
+- Deletion only ever removes a folder named with a job id directly inside
+  `app_data\jobs\`; nothing the request says is used as a path. If Windows
+  still has a file open (for example a video being played), `job.json` is
+  removed at once so the job is gone, and the rest of the folder is
+  removed the next time VolleyIQ starts.
+- To remove everything at once, use **Clear history**, or stop the app and
+  delete the `app_data` folder.
 
 ### Safety
 
@@ -234,9 +254,10 @@ not `data\`, `outputs\`, the annotation CSVs or the model cache.
 - A job is only marked completed after its output video has been read back.
   Jobs running when the app was closed are marked failed ("Interrupted") on
   the next start.
-- The stop request needs a custom header, which another website can't send
-  without the browser first asking VolleyIQ (and VolleyIQ never agrees), so
-  only the VolleyIQ page itself can stop the app.
+- The stop request needs a custom header, and deleting uses the `DELETE`
+  method. Another website can send neither without the browser first asking
+  VolleyIQ (and VolleyIQ never agrees), so only the VolleyIQ page itself can
+  stop the app or delete analyses.
 
 ### Limitations
 

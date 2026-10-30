@@ -38,12 +38,16 @@ let config = {
   max_duration_s: 300, samples_per_second: 6, retention_hours: 24, max_queued: 3,
 };
 let selectedFile = null;
+let previewUrl = null; // object URL of the chosen file, for the preview (revoked when it changes)
+let uploadRequest = null; // the XMLHttpRequest while an upload is running
 let pollTimer = null;
+let toastTimer = null;
 let elapsedTimer = null;
 let healthTimer = null;
 let stopped = false;
 let olderServer = false; // a VolleyIQ server started before this page's features existed
 let results = null; // {job, frames, fps, index}
+let currentJob = null; // the job shown in the processing, results or failed view
 
 // ---------- helpers ----------------------------------------------------
 
@@ -106,6 +110,76 @@ async function api(path, options = {}) {
   return data;
 }
 
+function toast(message) {
+  const box = $("toast");
+  box.textContent = message;
+  box.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { box.hidden = true; }, 4500);
+}
+
+// Resolves to true only if the user confirms in the dialog.
+function confirmAction(title, text, confirmLabel) {
+  const dialog = $("confirm-dialog");
+  if (typeof dialog.showModal !== "function") return Promise.resolve(window.confirm(`${title}\n\n${text}`));
+  $("confirm-title").textContent = title;
+  $("confirm-text").textContent = text;
+  $("confirm-ok").textContent = confirmLabel;
+  dialog.returnValue = "";
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+    dialog.showModal();
+  });
+}
+
+function releasePlayer() {
+  // Stop streaming the result video first: on Windows a file being read can't be deleted.
+  const player = $("player");
+  player.pause();
+  player.removeAttribute("src");
+  player.load();
+}
+
+// Deletes one job (cancelling it if it is running). Returns true if the server deleted it.
+async function deleteJob(job, { running = false } = {}) {
+  const name = job.filename || "this video";
+  const confirmed = running
+    ? await confirmAction("Cancel this analysis?",
+      `The analysis of "${name}" stops and its uploaded video and partial results are deleted from this computer.`,
+      "Cancel analysis")
+    : await confirmAction("Delete this analysis?",
+      `"${name}", its annotated video and its tracking CSV are permanently deleted from this computer.`, "Delete");
+  if (!confirmed) return false;
+  if (results && results.job.id === job.id) releasePlayer();
+  try {
+    const answer = await api(`/api/jobs/${job.id}`, { method: "DELETE" });
+    toast(answer.result === "cancelling" ? `Cancelled "${name}". Its files are being deleted.` : `Deleted "${name}".`);
+    return true;
+  } catch (error) {
+    if (error.status === 404) {
+      toast(`"${name}" was already deleted.`);
+      return true;
+    }
+    toast(`Couldn't delete "${name}": ${error.message}`);
+    return false;
+  }
+}
+
+async function clearHistory() {
+  const confirmed = await confirmAction("Clear the whole history?",
+    "Every analysis stored by VolleyIQ is permanently deleted from this computer, with its annotated video and " +
+    "CSV. An analysis that is still running is cancelled.", "Clear history");
+  if (!confirmed) return;
+  try {
+    const { deleted, cancelling } = await api("/api/jobs", { method: "DELETE" });
+    const total = deleted + cancelling;
+    toast(total ? `Deleted ${total} analys${total === 1 ? "is" : "es"}.` : "The history was already empty.");
+  } catch (error) {
+    toast(`Couldn't clear the history: ${error.message}`);
+  }
+  loadRecent();
+}
+
 function showView(name) {
   for (const view of VIEWS) $(`view-${view}`).hidden = view !== name;
   document.body.dataset.view = name;
@@ -125,6 +199,12 @@ function applyFacts() {
   $("limits-hint").textContent = `${types} · up to ${formatBytes(config.max_upload_bytes)} · up to ${minutes} minutes`;
   $("limits-text").textContent = `Supported: ${types}. Up to ${formatBytes(config.max_upload_bytes)} and ${minutes} minutes per clip.`;
   if (config.model) $("footer-model").textContent = config.model;
+  if ("gpu" in config) {
+    $("dash-device").textContent = config.gpu ? `GPU · ${config.gpu}` : "CPU (no CUDA GPU found)";
+    $("analyze-note").textContent = config.gpu
+      ? `The AI runs on this computer's ${config.gpu}. The page updates by itself.`
+      : "The AI runs on this computer's CPU, which is slower than a GPU. The page updates by itself.";
+  }
 }
 
 // ---------- upload -----------------------------------------------------
@@ -135,6 +215,7 @@ function showUploadError(message) {
 }
 
 function chooseFile(file) {
+  if (uploadRequest) return; // never swap the file during an upload
   showUploadError("");
   if (!file) return;
   const dot = file.name.lastIndexOf(".");
@@ -153,9 +234,41 @@ function chooseFile(file) {
   }
   selectedFile = file;
   $("file-name").textContent = file.name;
-  $("file-size").textContent = `${formatBytes(file.size)} · ready to analyse`;
+  $("file-size").textContent = formatBytes(file.size);
+  $("file-duration").textContent = "Reading…";
+  $("file-resolution").textContent = "Reading…";
   $("selected").hidden = false;
   $("analyze-button").disabled = false;
+  showPreview(file);
+}
+
+// Shows the chosen video in the page (it never leaves the browser for this) and checks its length.
+function showPreview(file) {
+  const preview = $("preview");
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(file);
+  $("preview-note").hidden = true;
+  preview.hidden = false;
+  preview.onloadedmetadata = () => {
+    if (selectedFile !== file) return;
+    const duration = preview.duration;
+    $("file-duration").textContent = isFinite(duration) ? formatDuration(duration) : "Checked on upload";
+    $("file-resolution").textContent = preview.videoWidth ? `${preview.videoWidth} × ${preview.videoHeight}` : "Checked on upload";
+    if (isFinite(duration) && duration > config.max_duration_s + 0.5) {
+      showUploadError(`This video is ${formatDuration(duration)} long. The limit is ` +
+        `${formatDuration(config.max_duration_s)}: trim it first.`);
+      $("analyze-button").disabled = true;
+    }
+  };
+  preview.onerror = () => {
+    if (selectedFile !== file) return;
+    // Some formats (e.g. AVI, MKV) can't play in a browser but can still be analysed; the server checks them.
+    preview.hidden = true;
+    $("preview-note").hidden = false;
+    $("file-duration").textContent = "Checked on upload";
+    $("file-resolution").textContent = "Checked on upload";
+  };
+  preview.src = previewUrl;
 }
 
 function clearFile() {
@@ -164,6 +277,18 @@ function clearFile() {
   $("selected").hidden = true;
   $("analyze-button").disabled = true;
   $("upload-progress").hidden = true;
+  const preview = $("preview");
+  preview.onloadedmetadata = preview.onerror = null;
+  preview.removeAttribute("src");
+  preview.load();
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
+}
+
+function setUploading(active) {
+  for (const id of ["analyze-button", "clear-file", "replace-file", "file-input"]) $(id).disabled = active;
+  $("dropzone").classList.toggle("disabled", active);
+  $("upload-progress").hidden = !active;
 }
 
 function setUploadProgress(percent, text) {
@@ -173,14 +298,13 @@ function setUploadProgress(percent, text) {
 }
 
 function upload() {
-  if (!selectedFile) return;
+  if (!selectedFile || uploadRequest) return; // one upload at a time: no accidental duplicates
   showUploadError("");
-  $("analyze-button").disabled = true;
-  $("clear-file").disabled = true;
-  $("upload-progress").hidden = false;
+  setUploading(true);
   setUploadProgress(0, "Uploading… 0%");
 
   const xhr = new XMLHttpRequest();
+  uploadRequest = xhr;
   xhr.open("POST", `/api/jobs?filename=${encodeURIComponent(selectedFile.name)}`);
   xhr.setRequestHeader("Content-Type", "application/octet-stream");
   xhr.upload.onprogress = (event) => {
@@ -189,16 +313,15 @@ function upload() {
     setUploadProgress(percent, percent < 100 ? `Uploading… ${percent}%` : "Checking the video…");
   };
   const finish = (message) => {
-    $("upload-progress").hidden = true;
-    $("analyze-button").disabled = false;
-    $("clear-file").disabled = false;
+    uploadRequest = null;
+    setUploading(false);
     showUploadError(message);
   };
   xhr.onload = () => {
     let data = null;
     try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
     if (xhr.status === 202 && data && data.id) {
-      $("clear-file").disabled = false;
+      finish("");
       clearFile();
       location.hash = `#job/${data.id}`;
     } else {
@@ -206,6 +329,8 @@ function upload() {
     }
   };
   xhr.onerror = () => finish("The upload failed. Is VolleyIQ still running?");
+  // The server deletes a partly received upload straight away.
+  xhr.onabort = () => { finish(""); toast("Upload cancelled. Nothing was kept."); };
   xhr.send(selectedFile);
 }
 
@@ -229,9 +354,42 @@ function recentItem(job) {
     metric.append(el("span", null, "in progress"));
   }
   link.append(badge, text, metric);
-  const item = el("li");
-  item.append(link);
+  const running = job.status === "queued" || job.status === "processing";
+  const remove = el("button", "icon-button");
+  remove.type = "button";
+  remove.title = running ? "Cancel and delete" : "Delete";
+  remove.setAttribute("aria-label", `${running ? "Cancel and delete" : "Delete"} ${job.filename}`);
+  remove.append(trashIcon());
+  remove.addEventListener("click", async () => {
+    remove.disabled = true;
+    if (await deleteJob(job, { running })) loadRecent();
+    else remove.disabled = false;
+  });
+  const item = el("li", "recent-row");
+  item.append(link, remove);
   return item;
+}
+
+function trashIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3");
+  svg.append(path);
+  return svg;
+}
+
+// Dashboard totals, computed only from the analyses the server reports.
+function renderDashboard(jobs) {
+  const done = jobs.filter((job) => job.status === "completed" && job.stats);
+  const frames = done.reduce((sum, job) => sum + (job.stats.frames_analysed || 0), 0);
+  $("dash-completed").textContent = String(done.length);
+  $("dash-frames").textContent = done.length ? frames.toLocaleString() : "–";
+  $("dash-found").textContent = done.length
+    ? `${(done.reduce((sum, job) => sum + job.stats.ball_found_percent, 0) / done.length).toFixed(1)}%`
+    : "–";
 }
 
 async function loadRecent() {
@@ -244,6 +402,8 @@ async function loadRecent() {
     $("recent-list").replaceChildren(...jobs.map(recentItem));
     $("recent-list").hidden = jobs.length === 0;
     $("recent-empty").hidden = jobs.length > 0;
+    $("clear-history").hidden = jobs.length === 0;
+    renderDashboard(jobs);
   } catch (error) {
     $("recent-error-text").textContent = error.message;
     $("recent-error").hidden = false;
@@ -565,6 +725,7 @@ function renderFailed(job) {
   showView("failed");
   clearInterval(elapsedTimer);
   $("fail-file").textContent = job.filename || "";
+  $("delete-failed").hidden = !job.id;
   $("fail-message").textContent = job.error || "Something went wrong while processing this video.";
   $("fail-limit").textContent = `${Math.round(config.max_duration_s / 60)} minutes`;
 }
@@ -624,6 +785,7 @@ async function pollJob(jobId) {
     return;
   }
   if (location.hash !== `#job/${jobId}`) return;
+  currentJob = job;
   if (job.status === "completed") renderResults(job);
   else if (job.status === "failed") renderFailed(job);
   else {
@@ -639,16 +801,15 @@ function route() {
   const match = hash.match(/^#job\/([0-9a-f]{16})$/);
   if (match) {
     if (!results || results.job.id !== match[1]) results = null;
+    if (!currentJob || currentJob.id !== match[1]) currentJob = null;
     window.scrollTo(0, 0);
     pollJob(match[1]);
     return;
   }
   clearInterval(elapsedTimer);
   results = null;
-  const player = $("player");
-  player.pause();
-  player.removeAttribute("src");
-  player.load();
+  currentJob = null;
+  releasePlayer();
   const wasHome = document.body.dataset.view === "home";
   showView("home");
   loadRecent();
@@ -705,6 +866,15 @@ async function init() {
   window.addEventListener("drop", (event) => event.preventDefault());
 
   $("clear-file").addEventListener("click", clearFile);
+  $("replace-file").addEventListener("click", () => $("file-input").click());
+  $("cancel-upload").addEventListener("click", () => { if (uploadRequest) uploadRequest.abort(); });
+  $("clear-history").addEventListener("click", clearHistory);
+  const deleteCurrent = async () => {
+    const job = currentJob;
+    if (!job) return;
+    if (await deleteJob(job, { running: job.status === "queued" || job.status === "processing" })) location.hash = "#recent";
+  };
+  for (const id of ["cancel-job", "delete-results", "delete-failed"]) $(id).addEventListener("click", deleteCurrent);
   $("analyze-button").addEventListener("click", upload);
   $("recent-retry").addEventListener("click", loadRecent);
   $("new-from-results").addEventListener("click", () => { location.hash = "#analyze"; });

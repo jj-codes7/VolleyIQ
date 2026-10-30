@@ -16,6 +16,13 @@ A job is only "completed" after its output video has been read back. Jobs
 that were queued or processing when the app stopped are marked failed the
 next time it starts. Finished jobs are deleted after `retention_hours`, and
 only the newest `max_jobs` are kept.
+
+The user can delete a job at any time (delete / delete_all). A queued or
+finished job's folder is removed at once. A job that is processing is
+cancelled instead: the worker stops it at the next frame or step (the
+processor's on_stage and on_stage.check_cancelled raise JobCancelled), and
+then removes its folder. Only folders named with a job id directly inside
+jobs/ are ever removed.
 """
 
 import json
@@ -46,6 +53,10 @@ class UploadError(ValueError):
     def __init__(self, message, status=400):
         super().__init__(message)
         self.status = status
+
+
+class JobCancelled(Exception):
+    """Raised inside a processing job when the user has deleted it."""
 
 
 def display_name(filename):
@@ -86,7 +97,10 @@ class JobManager:
     def _load_existing(self):
         for job_dir in self.jobs_dir.iterdir():
             path = job_dir / "job.json"
-            if not (JOB_ID_PATTERN.match(job_dir.name) and path.is_file()):
+            if not JOB_ID_PATTERN.match(job_dir.name) or not job_dir.is_dir():
+                continue
+            if not path.is_file():  # what is left of a deleted job, or of an interrupted upload
+                self._remove_job_dir(job_dir, attempts=1)
                 continue
             try:
                 job = json.loads(path.read_text(encoding="utf-8"))
@@ -94,6 +108,9 @@ class JobManager:
                 log.warning("Ignoring unreadable job file %s", path)
                 continue
             if job.get("id") != job_dir.name:
+                continue
+            if job.get("cancelling"):  # deleted by the user while it was processing
+                self._remove_job_dir(job_dir)
                 continue
             if job.get("status") in (QUEUED, PROCESSING):
                 job.update(status=FAILED, stage=None, finished_at=time.time(),
@@ -161,7 +178,7 @@ class JobManager:
             return None
         with self._lock:
             job = self._jobs.get(job_id)
-            job = dict(job) if job else None
+            job = dict(job) if job and not job.get("cancelling") else None  # deleted, still stopping
         if job and job["status"] == PROCESSING and job["stage"] == "detecting":
             detections = self.jobs_dir / job_id / "detections"
             done = len(list(detections.glob("*.auto.json"))) if detections.is_dir() else 0
@@ -177,7 +194,33 @@ class JobManager:
     def list(self):
         with self._lock:
             ids = sorted(self._jobs, key=lambda i: -self._jobs[i]["created_at"])
-        return [self.get(i) for i in ids]
+        return [job for job in map(self.get, ids) if job]
+
+    # --- deleting jobs -------------------------------------------------
+
+    def delete(self, job_id):
+        """Delete one job and its files. Returns "deleted", "cancelling" (it was processing and
+        stops shortly), or None for an unknown or malformed id."""
+        if not isinstance(job_id, str) or not JOB_ID_PATTERN.match(job_id):
+            return None
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.get("cancelling"):
+                return None
+            if job["status"] == PROCESSING:
+                job["cancelling"] = True  # the worker removes the folder when the processor stops
+                return "cancelling"
+            del self._jobs[job_id]
+        self._remove_job_dir(self.jobs_dir / job_id)
+        log.info("Deleted job %s", job_id)
+        return "deleted"
+
+    def delete_all(self):
+        """Delete every job (cancelling the one that is processing). Returns {"deleted": n, "cancelling": n}."""
+        with self._lock:
+            ids = [job_id for job_id, job in self._jobs.items() if not job.get("cancelling")]
+        results = [self.delete(job_id) for job_id in ids]
+        return {"deleted": results.count("deleted"), "cancelling": results.count("cancelling")}
 
     def output_file(self, job_id):
         """(path, media type) of a completed job's video, or None."""
@@ -212,20 +255,28 @@ class JobManager:
             finally:
                 self.cleanup()
 
+    def _check_cancelled(self, job_id):
+        with self._lock:
+            if self._jobs[job_id].get("cancelling"):
+                raise JobCancelled()
+
     def _run(self, job_id):
         job_dir = self.jobs_dir / job_id
-        with self._lock:
+        with self._lock:  # queued -> processing in one step, so a delete can't slip in between
             job = self._jobs.get(job_id)
             if job is None or job["status"] != QUEUED:
                 return
-        self._update(job_id, status=PROCESSING, started_at=time.time(), stage="starting")
+            job.update(status=PROCESSING, started_at=time.time(), stage="starting")
+            self._save(job)
 
         def on_stage(stage):
+            self._check_cancelled(job_id)
             changes = {"stage": stage}
             if stage == "detecting":
                 frames = job_dir / "frames"
                 changes["frames_total"] = len(list(frames.glob("*.jpg"))) if frames.is_dir() else 0
             self._update(job_id, **changes)
+        on_stage.check_cancelled = lambda: self._check_cancelled(job_id)  # for long steps, e.g. per frame
 
         try:
             output, stats = self.processor(job_dir / job["input"], job_dir, on_stage)
@@ -234,16 +285,27 @@ class JobManager:
             if output.resolve().parent != job_dir.resolve() or output.suffix not in MEDIA_TYPES:
                 raise RuntimeError("The processor returned an unexpected output file.")
             probe_video(output)
-            self._update(job_id, status=COMPLETED, stage=None, finished_at=time.time(), stats=stats, output=output.name)
+            result = dict(status=COMPLETED, stage=None, finished_at=time.time(), stats=stats, output=output.name)
+        except JobCancelled:
+            result = None
         except VideoError as error:
-            self._update(job_id, status=FAILED, stage=None, finished_at=time.time(), error=str(error))
+            result = dict(status=FAILED, stage=None, finished_at=time.time(), error=str(error))
         except Exception as error:
             log.exception("Job %s failed", job_id)
-            self._update(job_id, status=FAILED, stage=None, finished_at=time.time(),
-                         error=f"Processing failed: {type(error).__name__}: {error}")
-        finally:
-            with self._lock:
-                self._clean_temporary(job_dir, self._jobs[job_id])
+            result = dict(status=FAILED, stage=None, finished_at=time.time(),
+                          error=f"Processing failed: {type(error).__name__}: {error}")
+        with self._lock:
+            job = self._jobs[job_id]
+            cancelled = bool(job.get("cancelling"))
+            if cancelled:  # deleted while processing: drop everything, even a finished result
+                del self._jobs[job_id]
+            else:
+                job.update(result)
+                self._save(job)
+                self._clean_temporary(job_dir, job)
+        if cancelled:
+            self._remove_job_dir(job_dir)
+            log.info("Cancelled and deleted job %s", job_id)
 
     # --- storage -------------------------------------------------------
 
@@ -261,11 +323,28 @@ class JobManager:
         if job.get("input"):
             (job_dir / job["input"]).unlink(missing_ok=True)
 
-    def _remove_job_dir(self, job_dir):
-        """Delete one job folder, but only a real job folder directly inside jobs_dir."""
+    def _remove_job_dir(self, job_dir, attempts=10):
+        """Delete one job folder, but only a real job folder directly inside jobs_dir.
+
+        job.json goes first, so a folder that can't be fully removed yet (on Windows, a file
+        still being sent to the browser is locked) is never loaded as a job again; the rest is
+        retried briefly, and leftovers are removed the next time the app starts.
+        Returns True if the folder is gone.
+        """
         job_dir = Path(job_dir).resolve()
-        if job_dir.parent == self.jobs_dir and JOB_ID_PATTERN.match(job_dir.name):
+        if job_dir.parent != self.jobs_dir or not JOB_ID_PATTERN.match(job_dir.name):
+            return False
+        for attempt in range(attempts):
+            try:
+                (job_dir / "job.json").unlink(missing_ok=True)
+            except OSError:
+                pass
             shutil.rmtree(job_dir, ignore_errors=True)
+            if not job_dir.exists():
+                return True
+            time.sleep(0.2)
+        log.warning("Could not fully delete %s yet; it will be removed when VolleyIQ next starts", job_dir.name)
+        return False
 
     def cleanup(self, now=None):
         """Delete finished jobs older than the retention period, and all but the newest max_jobs."""

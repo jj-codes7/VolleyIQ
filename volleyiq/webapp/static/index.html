@@ -22,7 +22,7 @@
       <nav class="site-nav" aria-label="Sections">
         <a href="#analyze">Analyze</a>
         <a href="#how">How it works</a>
-        <a href="#recent">Recent</a>
+        <a href="#recent">History</a>
       </nav>
       <div class="header-actions">
         <span class="server-status" id="server-status" role="status" aria-live="polite">
@@ -93,6 +93,19 @@
         </figure>
       </section>
 
+      <section class="dashboard" aria-labelledby="dash-title">
+        <div class="section-head">
+          <h2 id="dash-title">On this computer</h2>
+          <p class="muted small">Totals from the analyses VolleyIQ currently stores. Nothing leaves this computer.</p>
+        </div>
+        <dl class="dash-stats" id="dash-stats">
+          <div class="dash-stat"><dt>Analyses completed</dt><dd id="dash-completed">–</dd></div>
+          <div class="dash-stat"><dt>Frames analysed</dt><dd id="dash-frames">–</dd></div>
+          <div class="dash-stat"><dt>Average ball located</dt><dd id="dash-found">–</dd></div>
+          <div class="dash-stat"><dt>AI runs on</dt><dd id="dash-device">–</dd></div>
+        </dl>
+      </section>
+
       <section class="scope" aria-labelledby="scope-title">
         <h2 id="scope-title" class="visually-hidden">What this version does</h2>
         <div class="scope-col">
@@ -129,12 +142,25 @@
         </label>
 
         <div id="selected" class="selected" hidden>
-          <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2v8l-4-2"/></svg>
-          <div class="selected-text">
-            <div class="file-name" id="file-name"></div>
-            <div class="muted small" id="file-size"></div>
+          <div class="preview">
+            <video id="preview" muted playsinline controls preload="metadata" aria-label="Preview of the chosen video"></video>
+            <p class="preview-note muted small" id="preview-note" hidden>This browser can't preview this format.
+              VolleyIQ can still analyse it.</p>
           </div>
-          <button type="button" class="btn btn-ghost btn-small" id="clear-file">Remove</button>
+          <div class="selected-body">
+            <div class="selected-text">
+              <div class="file-name" id="file-name"></div>
+              <dl class="file-facts">
+                <div><dt>Size</dt><dd id="file-size">–</dd></div>
+                <div><dt>Duration</dt><dd id="file-duration">–</dd></div>
+                <div><dt>Resolution</dt><dd id="file-resolution">–</dd></div>
+              </dl>
+            </div>
+            <div class="selected-actions">
+              <button type="button" class="btn btn-ghost btn-small" id="replace-file">Replace</button>
+              <button type="button" class="btn btn-ghost btn-small" id="clear-file">Remove</button>
+            </div>
+          </div>
         </div>
 
         <p id="upload-error" class="alert" role="alert" hidden></p>
@@ -143,12 +169,15 @@
           <div class="bar" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="upload-bar">
             <div class="fill" id="upload-fill"></div>
           </div>
-          <span class="muted small" id="upload-text" aria-live="polite">Uploading…</span>
+          <div class="upload-row">
+            <span class="muted small" id="upload-text" aria-live="polite">Uploading…</span>
+            <button type="button" class="btn btn-ghost btn-small" id="cancel-upload">Cancel upload</button>
+          </div>
         </div>
 
         <div class="analyze-actions">
           <button type="button" class="btn btn-primary btn-large" id="analyze-button" disabled>Analyze a match</button>
-          <span class="muted small">Processing runs on this computer's GPU when available. The page updates by itself.</span>
+          <span class="muted small" id="analyze-note">Processing runs on this computer, on its GPU when available. The page updates by itself.</span>
         </div>
       </section>
 
@@ -182,8 +211,14 @@
 
       <section id="recent" class="panel recent" aria-labelledby="recent-title">
         <div class="section-head">
-          <h2 id="recent-title">Recent analyses</h2>
-          <p class="muted small" id="recent-note">Kept for <span data-fact="retention">24</span> hours on this computer.</p>
+          <div>
+            <h2 id="recent-title">Analysis history</h2>
+            <p class="muted small" id="recent-note">Stored on this computer and deleted automatically after
+              <span data-fact="retention">24</span> hours. Delete any analysis sooner with its delete button.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="clear-history" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Clear history
+          </button>
         </div>
         <div id="recent-loading" class="skeleton-list" aria-label="Loading recent analyses">
           <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
@@ -202,7 +237,7 @@
 
     <!-- ============ Processing ============ -->
     <section id="view-processing" class="view" hidden aria-labelledby="proc-title">
-      <a class="back-link" href="#recent">← All analyses</a>
+      <a class="back-link" href="#recent">← Analysis history</a>
       <div class="panel processing">
         <div class="proc-head">
           <span class="badge" id="proc-badge">Queued</span>
@@ -221,14 +256,17 @@
           <div class="fill" id="proc-fill"></div>
         </div>
         <p class="proc-detail" id="proc-detail" aria-live="polite">&nbsp;</p>
-        <p class="muted small">You can close this tab: the analysis keeps running while VolleyIQ is running, and it
-          will be listed under Recent analyses.</p>
+        <div class="proc-foot">
+          <p class="muted small">You can close this tab: the analysis keeps running while VolleyIQ is running, and it
+            will be listed under Analysis history.</p>
+          <button type="button" class="btn btn-ghost btn-small btn-danger-ghost" id="cancel-job">Cancel analysis</button>
+        </div>
       </div>
     </section>
 
     <!-- ============ Results ============ -->
     <section id="view-results" class="view" hidden aria-labelledby="res-title">
-      <a class="back-link" href="#recent">← All analyses</a>
+      <a class="back-link" href="#recent">← Analysis history</a>
       <div class="results-head">
         <div class="results-title">
           <span class="badge completed">Completed</span>
@@ -242,6 +280,9 @@
           <a class="btn btn-ghost" id="download-csv">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Tracking CSV
           </a>
+          <button type="button" class="btn btn-ghost btn-danger-ghost" id="delete-results">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Delete
+          </button>
           <button type="button" class="btn btn-primary" id="new-from-results">Analyze another</button>
         </div>
       </div>
@@ -285,6 +326,14 @@
               alone never makes a frame good.</p>
           </div>
 
+          <div class="panel explain">
+            <h2>What these results mean</h2>
+            <p class="muted small">The annotated video shows only the analysed frames (about
+              <span data-fact="samples">6</span> per second), played at real-time speed. The ball is marked where the
+              detector found it and the tracking rules accepted it; nothing is filled in between frames. Every number
+              on this page comes from this analysis, and the CSV has one row per analysed frame.</p>
+          </div>
+
           <div class="panel">
             <h2>Video &amp; processing</h2>
             <dl class="facts" id="facts"></dl>
@@ -298,7 +347,7 @@
 
     <!-- ============ Failed ============ -->
     <section id="view-failed" class="view" hidden aria-labelledby="fail-title">
-      <a class="back-link" href="#recent">← All analyses</a>
+      <a class="back-link" href="#recent">← Analysis history</a>
       <div class="panel failed">
         <span class="badge failed">Failed</span>
         <h1 id="fail-title">This video couldn't be analysed</h1>
@@ -309,7 +358,10 @@
           <li>Clips can be at most <span id="fail-limit">5 minutes</span> long; trim longer recordings first.</li>
           <li>If it says VolleyIQ was closed, upload the video again and keep VolleyIQ running until it finishes.</li>
         </ul>
-        <button type="button" class="btn btn-primary" id="new-from-failed">Try another video</button>
+        <div class="failed-actions">
+          <button type="button" class="btn btn-primary" id="new-from-failed">Try another video</button>
+          <button type="button" class="btn btn-ghost btn-danger-ghost" id="delete-failed">Delete from history</button>
+        </div>
       </div>
     </section>
 
@@ -337,9 +389,23 @@
     </form>
   </dialog>
 
+  <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+    <form method="dialog">
+      <h2 id="confirm-title">Delete?</h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button type="submit" class="btn btn-ghost" value="cancel" autofocus>Keep</button>
+        <button type="submit" class="btn btn-danger" value="confirm" id="confirm-ok">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
   <footer class="site-footer">
     <p>VolleyIQ runs locally on this computer (127.0.0.1) and is not hosted online. Uploaded videos are deleted
-      when analysis finishes; results are deleted after <span data-fact="retention">24</span> hours.</p>
+      when analysis finishes; results are deleted after <span data-fact="retention">24</span> hours, or as soon
+      as you delete them.</p>
     <p>Ball detection uses the <span id="footer-model">grdesignbuild/volleyball-person-ball-detector</span> model
       (Apache-2.0), a fine-tune of D-FINE-S.</p>
   </footer>

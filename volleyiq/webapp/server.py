@@ -19,10 +19,13 @@ Routes:
     GET  /api/jobs/<id>/video    the analysed video (supports seeking)
     GET  /api/jobs/<id>/track.csv  the tracking result
     GET  /api/jobs/<id>/tracking   the same tracking result as JSON, for the results page
+    DELETE /api/jobs/<id>        delete a job and all its files (a processing job is cancelled first)
+    DELETE /api/jobs             delete every job: clears the history
     POST /api/shutdown           stop the app (needs the X-VolleyIQ-Action: shutdown header)
 
 Nothing else on disk is reachable: static files come from a fixed list, and
-job ids must be 16 hex characters.
+job ids must be 16 hex characters. Deleting only ever removes folders named
+with a job id inside app_data/jobs/ (see JobManager._remove_job_dir).
 """
 
 import argparse
@@ -62,7 +65,7 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; media-src 'self'; frame-ancestors 'none'",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none'",
 }
 STREAM_CHUNK = 256 * 1024
 DRAIN_LIMIT = 1024 * 1024  # refused bodies up to this size are read and dropped
@@ -87,6 +90,8 @@ def parse_range(header, size):
 
 class VolleyIQServer(ThreadingHTTPServer):
     daemon_threads = True
+    # On Windows, SO_REUSEADDR lets a second server bind a port that is already in use.
+    allow_reuse_address = sys.platform != "win32"
 
     def __init__(self, address, manager, max_upload_bytes):
         super().__init__(address, Handler)
@@ -204,6 +209,7 @@ class Handler(BaseHTTPRequestHandler):
                 "retention_hours": round(manager.retention_s / 3600, 1),
                 "max_queued": manager.max_queued,
                 "model": MODEL_ID,
+                "gpu": gpu_name(),
             })
         elif path == "/api/jobs":
             self.send_json(HTTPStatus.OK, {"jobs": manager.list()})
@@ -234,6 +240,23 @@ class Handler(BaseHTTPRequestHandler):
                                                "output_fps": (job.get("stats") or {}).get("output_fps")})
             else:
                 self.send_file(found, "text/csv; charset=utf-8", download_name=f"volleyiq_{job_id}_track.csv")
+
+    def do_DELETE(self):
+        # DELETE is never sent cross-site without a CORS preflight (OPTIONS), which this server refuses.
+        reason = self._untrusted_reason()
+        if reason:
+            return self.send_error_json(HTTPStatus.FORBIDDEN, reason)
+        path = urlsplit(self.path).path
+        manager = self.server.manager
+        if path == "/api/jobs":
+            return self.send_json(HTTPStatus.OK, manager.delete_all())
+        match = JOB_ROUTE.match(path)
+        if not match or match.group(2):
+            return self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.")
+        result = manager.delete(match.group(1))
+        if result is None:
+            return self.send_error_json(HTTPStatus.NOT_FOUND, "No such job. It may already have been deleted.")
+        self.send_json(HTTPStatus.OK, {"id": match.group(1), "result": result})
 
     def do_POST(self):
         try:
@@ -311,6 +334,30 @@ class CountingReader:
         return data
 
 
+def gpu_name():
+    """The CUDA GPU the model runs on, or None (then it runs on the CPU)."""
+    try:
+        import torch
+
+        return torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    except Exception:  # no usable CUDA: the app still works on the CPU
+        return None
+
+
+class CancellableDetector:
+    """The shared detector, checking before each batch of tiles whether the user cancelled this job."""
+
+    def __init__(self, detector, check_cancelled):
+        self._detector, self._check = detector, check_cancelled
+
+    def predict_crops(self, *args, **kwargs):
+        self._check()
+        return self._detector.predict_crops(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._detector, name)
+
+
 def make_real_processor():
     """The processor used by the app: the real pipeline, with the model loaded once and reused."""
     from volleyiq.webapp.pipeline import process_video
@@ -330,7 +377,9 @@ def make_real_processor():
             return cache["detector"]
 
     def processor(input_path, work_dir, on_stage):
-        return process_video(input_path, work_dir, get_detector, on_stage)
+        check = getattr(on_stage, "check_cancelled", None)
+        detector = (lambda: CancellableDetector(get_detector(), check)) if check else get_detector
+        return process_video(input_path, work_dir, detector, on_stage)
 
     return processor
 
@@ -354,6 +403,15 @@ def main(argv=None):
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
+    url = f"http://127.0.0.1:{args.port}/"
+    from volleyiq.launcher import is_running
+
+    if is_running(url):  # e.g. VolleyIQ.bat double-clicked twice: just show the running app
+        print(f"VolleyIQ is already running at {url}. Opening it in the browser.")
+        if not args.no_browser:
+            webbrowser.open(url)
+        return 0
+
     max_upload = args.max_upload_mb * 1024 * 1024
     manager = JobManager(args.data_dir, make_real_processor(), max_upload)
     try:
@@ -365,7 +423,6 @@ def main(argv=None):
         return 1
 
     manager.start()
-    url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"VolleyIQ is running at {url}\nKeep this window open while you use it. Press Ctrl+C to stop.")
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, (url,)).start()

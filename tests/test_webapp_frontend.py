@@ -73,6 +73,29 @@ class FrontendTests(unittest.TestCase):
             if tag == "button":  # an explicit type, so no button submits a form by accident
                 self.assertIn(attrs.get("type"), ("button", "submit"))
 
+    def test_deleting_always_asks_first(self):
+        for control in ("delete-results", "delete-failed", "cancel-job", "clear-history", "confirm-dialog"):
+            self.assertIn(control, self.page.ids)
+        self.assertIn('method: "DELETE"', self.js)
+        # Every DELETE request sits in a function that awaits the confirmation dialog first.
+        for function in re.findall(r"async function (\w+)\([^)]*\) \{(.*?)\n\}", self.js, re.S):
+            name, body = function
+            if 'method: "DELETE"' in body:
+                self.assertLess(body.index("confirmAction("), body.index('method: "DELETE"'), name)
+        # The result video stops streaming before its file is deleted (Windows can't delete open files).
+        self.assertIn("releasePlayer()", self.js)
+
+    def test_preview_is_allowed_by_the_content_security_policy(self):
+        from volleyiq.webapp.server import SECURITY_HEADERS
+
+        self.assertIn("media-src 'self' blob:", SECURITY_HEADERS["Content-Security-Policy"])
+        self.assertIn("URL.createObjectURL", self.js)
+        self.assertIn("URL.revokeObjectURL", self.js)
+
+    def test_upload_can_be_cancelled_and_not_duplicated(self):
+        self.assertIn("uploadRequest.abort()", self.js)
+        self.assertRegex(self.js, r"if \(!selectedFile \|\| uploadRequest\) return;")
+
     def test_honest_scope_is_stated(self):
         text = re.sub(r"\s+", " ", self.html)
         self.assertIn("Not yet", text)

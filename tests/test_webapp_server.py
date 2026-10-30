@@ -11,6 +11,7 @@ deleted afterwards.
 
 import http.client
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -407,6 +408,209 @@ class JobManagerStorageTests(unittest.TestCase):
         for job_id in ("../jobs", "", None, "g" * 16):
             self.assertIsNone(manager.get(job_id))
             self.assertIsNone(manager.output_file(job_id))
+
+
+class CancellableFakeProcessor(FakeProcessor):
+    """Works frame by frame like the real detection step, checking for cancellation each time."""
+
+    def __call__(self, input_path, work_dir, on_stage):
+        (Path(work_dir) / "frames").mkdir()
+        on_stage("detecting")
+        while not self.release.is_set():
+            on_stage.check_cancelled()
+            time.sleep(0.01)
+        self.finished = True
+        output = write_video(Path(work_dir) / "output.mp4")
+        (Path(work_dir) / "track.csv").write_text(TRACK_CSV, encoding="utf-8")
+        return output, {"frames_analysed": 2, "output_fps": 6.0}
+
+
+class DeleteTests(ServerTestCase):
+    def delete(self, path, headers=None):
+        status, _, data = self.request("DELETE", path, headers=headers)
+        return status, json.loads(data)
+
+    def completed_job(self):
+        _, job = self.upload()
+        self.processor.release.set()
+        job = self.wait_for(job["id"], {COMPLETED})
+        self.processor.release.clear()
+        return job
+
+    def test_delete_completed_job_removes_its_files(self):
+        job = self.completed_job()
+        self.assertEqual(self.job_dirs(), [job["id"]])
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}"), (200, {"id": job["id"], "result": "deleted"}))
+        self.assertEqual(self.job_dirs(), [])
+        self.assertEqual(self.request("GET", f"/api/jobs/{job['id']}")[0], 404)
+        self.assertEqual(self.request("GET", f"/api/jobs/{job['id']}/video")[0], 404)
+        self.assertEqual(self.request("GET", f"/api/jobs/{job['id']}/track.csv")[0], 404)
+        self.assertEqual(self.get_json("/api/jobs")[1], {"jobs": []})
+        # Deleting again is a clear 404, not an error.
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}")[0], 404)
+
+    def test_delete_failed_job(self):
+        self.processor.fail = RuntimeError("boom")
+        _, job = self.upload()
+        self.processor.release.set()
+        self.wait_for(job["id"], {FAILED})
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}")[1]["result"], "deleted")
+        self.assertEqual(self.job_dirs(), [])
+
+    def test_delete_processing_job_cancels_it_then_removes_it(self):
+        _, job = self.upload()
+        self.wait_for(job["id"], {PROCESSING}, stage="detecting")
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}")[1]["result"], "cancelling")
+        self.assertEqual(self.request("GET", f"/api/jobs/{job['id']}")[0], 404)  # hidden at once
+        self.assertEqual(self.get_json("/api/jobs")[1], {"jobs": []})
+        self.processor.release.set()  # the processor finishes, but the result is thrown away
+        deadline = time.time() + 10
+        while self.job_dirs() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(self.job_dirs(), [])
+
+    def test_cancel_stops_long_detection_part_way(self):
+        self.processor = processor = CancellableFakeProcessor()
+        self.manager.processor = processor
+        _, job = self.upload()
+        self.wait_for(job["id"], {PROCESSING}, stage="detecting")
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}")[1]["result"], "cancelling")
+        deadline = time.time() + 10
+        while self.job_dirs() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(self.job_dirs(), [])
+        self.assertFalse(getattr(processor, "finished", False))  # stopped without finishing
+        # The worker is free again: the next upload is processed.
+        processor.release.set()
+        _, other = self.upload()
+        self.assertEqual(self.wait_for(other["id"], {COMPLETED})["status"], COMPLETED)
+
+    def test_delete_queued_job_never_runs(self):
+        _, first = self.upload()
+        self.wait_for(first["id"], {PROCESSING}, stage="detecting")
+        _, second = self.upload()
+        self.assertEqual(self.delete(f"/api/jobs/{second['id']}")[1]["result"], "deleted")
+        self.assertEqual(self.job_dirs(), [first["id"]])
+        self.processor.release.set()
+        self.wait_for(first["id"], {COMPLETED})
+        time.sleep(0.2)
+        self.assertEqual(len(self.processor.calls), 1)
+        self.assertEqual(self.job_dirs(), [first["id"]])  # deleting one job never touches another
+
+    def test_clear_all(self):
+        job = self.completed_job()
+        _, running = self.upload()
+        self.wait_for(running["id"], {PROCESSING}, stage="detecting")
+        self.assertEqual(self.delete("/api/jobs"), (200, {"deleted": 1, "cancelling": 1}))
+        self.assertEqual(self.get_json("/api/jobs")[1], {"jobs": []})
+        self.processor.release.set()
+        deadline = time.time() + 10
+        while self.job_dirs() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(self.job_dirs(), [])
+        self.assertNotIn(job["id"], self.job_dirs())
+        self.assertEqual(self.delete("/api/jobs"), (200, {"deleted": 0, "cancelling": 0}))
+
+    def test_no_arbitrary_paths_can_be_deleted(self):
+        job = self.completed_job()
+        outside = self.tmp / "app_data" / "keep.txt"
+        outside.write_text("not a job", encoding="utf-8")
+        sibling = self.tmp / "app_data" / "jobs" / "not-a-job"
+        sibling.mkdir()
+        for path in ("/api/jobs/..", "/api/jobs/%2e%2e", "/api/jobs/..%2fkeep.txt", "/api/jobs/not-a-job",
+                     "/api/jobs/0123456789ABCDEF", f"/api/jobs/{job['id']}/video", f"/api/jobs/{job['id']}/track.csv",
+                     f"/api/jobs/{job['id']}/../..", "/api/jobs/0123456789abcdef", "/", "/app.js"):
+            with self.subTest(path=path):
+                self.assertEqual(self.request("DELETE", path)[0], 404)
+        self.assertTrue(outside.is_file())
+        self.assertTrue(sibling.is_dir())
+        self.assertIn(job["id"], self.job_dirs())
+        self.assertEqual(self.manager.delete("../keep.txt"), None)
+        self.assertFalse(self.manager._remove_job_dir(self.tmp / "app_data"))
+        self.assertTrue(outside.is_file())
+
+    def test_refused_from_other_websites(self):
+        job = self.completed_job()
+        for headers in ({"Origin": "http://evil.example"}, {"Host": "evil.example"}):
+            with self.subTest(headers=headers):
+                self.assertEqual(self.delete(f"/api/jobs/{job['id']}", headers=headers)[0], 403)
+                self.assertEqual(self.delete("/api/jobs", headers=headers)[0], 403)
+        self.assertEqual(self.job_dirs(), [job["id"]])
+        same_site = {"Origin": f"http://127.0.0.1:{self.port}"}
+        self.assertEqual(self.delete(f"/api/jobs/{job['id']}", headers=same_site)[0], 200)
+
+    def test_preflight_is_not_allowed(self):
+        status, headers, _ = self.request("OPTIONS", "/api/jobs", headers={"Origin": "http://evil.example"})
+        self.assertNotEqual(status, 200)
+        self.assertNotIn("Access-Control-Allow-Origin", headers)
+
+
+class DeletedJobStorageTests(JobManagerStorageTests):
+    def test_leftovers_of_deleted_jobs_are_removed_at_start(self):
+        leftover = self.jobs / "cccccccccccccccc"
+        leftover.mkdir()
+        (leftover / "output.mp4").write_bytes(b"x")  # job.json already gone: a deletion that was interrupted
+        cancelled = self.make_job("dddddddddddddddd", PROCESSING)
+        job = json.loads((cancelled / "job.json").read_text(encoding="utf-8"))
+        job["cancelling"] = True
+        (cancelled / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        kept = self.make_job("eeeeeeeeeeeeeeee", COMPLETED)
+        other = self.jobs / "not-a-job"
+        other.mkdir()
+        manager = JobManager(self.data, FakeProcessor(), MAX_UPLOAD)
+        self.assertFalse(leftover.exists())
+        self.assertFalse(cancelled.exists())
+        self.assertTrue(kept.exists())
+        self.assertTrue(other.exists())
+        self.assertEqual([j["id"] for j in manager.list()], ["eeeeeeeeeeeeeeee"])
+
+
+class CancellableDetectorTests(unittest.TestCase):
+    def test_checks_before_each_batch_and_passes_everything_else_through(self):
+        from volleyiq.webapp.jobs import JobCancelled
+        from volleyiq.webapp.server import CancellableDetector
+
+        class Detector:
+            device, revision, id2label = "cuda", "abc", {0: "ball"}
+
+            def predict_crops(self, crops, threshold):
+                return [("result", crops, threshold)]
+
+        cancelled = threading.Event()
+
+        def check():
+            if cancelled.is_set():
+                raise JobCancelled()
+
+        wrapped = CancellableDetector(Detector(), check)
+        self.assertEqual((wrapped.device, wrapped.revision, wrapped.id2label), ("cuda", "abc", {0: "ball"}))
+        self.assertEqual(wrapped.predict_crops([1], 0.5), [("result", [1], 0.5)])
+        cancelled.set()
+        with self.assertRaises(JobCancelled):
+            wrapped.predict_crops([1], 0.5)
+
+
+class AlreadyRunningTests(ServerTestCase):
+    def test_second_start_opens_the_running_app_instead_of_failing(self):
+        from volleyiq.webapp import server
+
+        env = {key: os.environ.get(key) for key in ("HF_HUB_OFFLINE", "HF_HUB_DISABLE_TELEMETRY")}
+        try:
+            with redirect_stdout(StringIO()) as output:
+                code = server.main(["--port", str(self.port), "--no-browser", "--data-dir", str(self.tmp / "second")])
+        finally:
+            for key, value in env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        self.assertEqual(code, 0)
+        self.assertIn("already running", output.getvalue())
+
+    def test_port_in_use_is_refused(self):
+        # Two servers must never share a port (Windows allows it with SO_REUSEADDR).
+        with self.assertRaises(OSError):
+            VolleyIQServer(("127.0.0.1", self.port), self.manager, MAX_UPLOAD).server_close()
 
 
 class HelperTests(unittest.TestCase):
