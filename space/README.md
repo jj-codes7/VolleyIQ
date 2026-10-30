@@ -7,7 +7,6 @@ sdk: gradio
 sdk_version: 6.31.0
 python_version: "3.10"
 app_file: app.py
-suggested_hardware: zero-a10g
 pinned: false
 short_description: Volleyball ball detection and tracking for your videos
 models:
